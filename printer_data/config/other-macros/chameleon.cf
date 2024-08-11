@@ -10,7 +10,7 @@ gcode:
   {% set svv = printer.save_variables.variables %}
   # Initialize or update the chameleon parameter
   {% if 'chameleon' not in svv %}
-    {% set chameleon = [0, -1, 'empty', 'empty', 'empty', 'empty', -1] %}
+    {% set chameleon = [0, -1, 'empty', 'empty', 'empty', 'empty'] %}
   {% else %}
     {% set chameleon = svv.chameleon %}
     {% if chameleon[0] != -1 %}
@@ -34,27 +34,22 @@ gcode:
   
   SET_GCODE_VARIABLE MACRO=CHAMELEON_HOME VARIABLE=chameleon_is_homed VALUE=1
   M118 Chameleon is Homed!
-  CHAMELEON_CHK_ACTIVE_TOOL
-  
+
 [gcode_macro CHAMELEON_TS0]
 gcode:
   _TOOL_SELECT TOOL=0
-  CHAMELEON_CHK_ACTIVE_TOOL
 
 [gcode_macro CHAMELEON_TS1]
 gcode:
   _TOOL_SELECT TOOL=1
-  CHAMELEON_CHK_ACTIVE_TOOL
 
 [gcode_macro CHAMELEON_TS2]
 gcode:
   _TOOL_SELECT TOOL=2
-  CHAMELEON_CHK_ACTIVE_TOOL
 
 [gcode_macro CHAMELEON_TS3]
 gcode:
   _TOOL_SELECT TOOL=3
-  CHAMELEON_CHK_ACTIVE_TOOL
 
 [gcode_macro _TOOL_SELECT]
 gcode:
@@ -106,7 +101,6 @@ gcode:
     MANUAL_STEPPER STEPPER=chameleon ENABLE=0
     SET_GCODE_VARIABLE MACRO=CHAMELEON_HOME VARIABLE=chameleon_is_homed VALUE=0
   {% endif %}
-  CHAMELEON_CHK_ACTIVE_TOOL
 
 [gcode_macro CHAMELEON_Y_UNLOAD]
 description: Unloads the filament from the Y-splitter and updates tip shaping requirements
@@ -118,31 +112,22 @@ gcode:
   {% set SPEED = printer["gcode_macro CHAMELEON_HOME"].chameleon_speed %}
   {% set ACC = printer["gcode_macro CHAMELEON_HOME"].chameleon_acc %}
 
-  # Check if there's filament loaded in the current tool
-  {% if chameleon[TOOL+2] == 'empty' %}
-    M118 Tool {TOOL} is already empty. No unload necessary.
+  # Update the tool status to 'empty'
+  {% set chameleon = chameleon[:TOOL+2] + ['empty'] + chameleon[TOOL+3:] %}
+  SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
+
+  MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+  {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
+    M118 Chameleon is not homed, must run CHAMELEON_HOME
   {% else %}
-    # Check if the system is homed
-    {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
-      M118 Chameleon is not homed, must run CHAMELEON_HOME
+    {% if TOOL == 0 or TOOL == 1 %}
+      MANUAL_STEPPER stepper=chameleon MOVE=-{YSPLIT_DIST+30} SPEED={SPEED} ACCEL={ACC}
     {% else %}
-      # Perform unload operation
-      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
-      {% if TOOL == 0 or TOOL == 1 %}
-        MANUAL_STEPPER stepper=chameleon MOVE=-{YSPLIT_DIST+30} SPEED={SPEED} ACCEL={ACC}
-      {% else %}
-        MANUAL_STEPPER stepper=chameleon MOVE={YSPLIT_DIST+30} SPEED={SPEED} ACCEL={ACC}
-      {% endif %}
-      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
-      
-      # Update the tool status to 'empty'
-      {% set chameleon = chameleon[:TOOL+2] + ['empty'] + chameleon[TOOL+3:6] + [chameleon[6]] %}
-      SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
-      
-      M118 Unload tool {TOOL} from Y-splitter by {YSPLIT_DIST+30}mm and set status to 'empty' for tool {TOOL}
+      MANUAL_STEPPER stepper=chameleon MOVE={YSPLIT_DIST+30} SPEED={SPEED} ACCEL={ACC}
     {% endif %}
+    MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+    M118 Unload tool {TOOL} from Y-splitter by {YSPLIT_DIST+30}mm and set status to 'empty' for tool {TOOL}
   {% endif %}
-  CHAMELEON_CHK_ACTIVE_TOOL
 
 [gcode_macro CHAMELEON_LOAD_HARD]
 description: Loads the normal hard filament into the Y-splitter and updates tip shaping requirements
@@ -154,31 +139,23 @@ gcode:
   {% set SPEED = printer["gcode_macro CHAMELEON_HOME"].chameleon_speed %}
   {% set ACC = printer["gcode_macro CHAMELEON_HOME"].chameleon_acc %}
 
-  # Check if the tool is already loaded or if its status conflicts
-  {% if chameleon[TOOL+2] == 'hard' %}
-    M118 Tool {TOOL} is already loaded with hard filament. No action taken.
-  {% elif chameleon[TOOL+2] != 'empty' %}
-    M118 Error: Tool {TOOL} is not empty. Please unload it first.
-  {% else %}
-    # Update the tool status to 'hard'
-    {% set chameleon = chameleon[:TOOL+2] + ['hard'] + chameleon[TOOL+3:6] + [chameleon[6]] %}
-    SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
+  # Update the tool status to 'hard'
+  {% set chameleon = chameleon[:TOOL+2] + ['hard'] + chameleon[TOOL+3:] %}
+  SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
 
-    MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
-    {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
-      M118 Chameleon is not homed, must run CHAMELEON_HOME
+  MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+  {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
+    M118 Chameleon is not homed, must run CHAMELEON_HOME
+  {% else %}
+    {% if TOOL == 0 or TOOL == 1 %}
+      MANUAL_STEPPER stepper=chameleon MOVE={YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
     {% else %}
-      {% if TOOL == 0 or TOOL == 1 %}
-        MANUAL_STEPPER stepper=chameleon MOVE={YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
-      {% else %}
-        MANUAL_STEPPER stepper=chameleon MOVE=-{YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
-      {% endif %}
-      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
-      M118 Load tool {TOOL} to Y-splitter by {YSPLIT_DIST}mm and set status to 'hard' for tool {TOOL}
+      MANUAL_STEPPER stepper=chameleon MOVE=-{YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
     {% endif %}
-    G92 E0
+    MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+    M118 Load tool {TOOL} to Y-splitter by {YSPLIT_DIST}mm and set status to 'hard' for tool {TOOL}
   {% endif %}
-  CHAMELEON_CHK_ACTIVE_TOOL
+  G92 E0
 
 [gcode_macro CHAMELEON_LOAD_SOFT]
 description: Loads soft TPU filament into the Y-splitter and updates tip shaping requirements
@@ -190,31 +167,23 @@ gcode:
   {% set SPEED = printer["gcode_macro CHAMELEON_HOME"].chameleon_speed %}
   {% set ACC = printer["gcode_macro CHAMELEON_HOME"].chameleon_acc %}
 
-  # Check if the tool is already loaded or if its status conflicts
-  {% if chameleon[TOOL+2] == 'soft' %}
-    M118 Tool {TOOL} is already loaded with soft filament. No action taken.
-  {% elif chameleon[TOOL+2] != 'empty' %}
-    M118 Error: Tool {TOOL} is not empty. Please unload it first.
-  {% else %}
-    # Update the tool status to 'soft'
-    {% set chameleon = chameleon[:TOOL+2] + ['soft'] + chameleon[TOOL+3:6] + [chameleon[6]] %}
-    SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
+  # Update the tool status to 'soft'
+  {% set chameleon = chameleon[:TOOL+2] + ['soft'] + chameleon[TOOL+3:] %}
+  SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
 
-    MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
-    {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
-      M118 Chameleon is not homed, must run CHAMELEON_HOME
+  MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+  {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
+    M118 Chameleon is not homed, must run CHAMELEON_HOME
+  {% else %}
+    {% if TOOL == 0 or TOOL == 1 %}
+      MANUAL_STEPPER stepper=chameleon MOVE={YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
     {% else %}
-      {% if TOOL == 0 or TOOL == 1 %}
-        MANUAL_STEPPER stepper=chameleon MOVE={YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
-      {% else %}
-        MANUAL_STEPPER stepper=chameleon MOVE=-{YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
-      {% endif %}
-      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
-      M118 Load tool {TOOL} to Y-splitter by {YSPLIT_DIST}mm and set status to 'soft' for tool {TOOL}
+      MANUAL_STEPPER stepper=chameleon MOVE=-{YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
     {% endif %}
-    G92 E0
+    MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+    M118 Load tool {TOOL} to Y-splitter by {YSPLIT_DIST}mm and set status to 'soft' for tool {TOOL}
   {% endif %}
-  CHAMELEON_CHK_ACTIVE_TOOL
+  G92 E0
 
 [gcode_macro CHAMELEON_CHK_ACTIVE_TOOL]
 gcode:
@@ -226,7 +195,65 @@ gcode:
   {% for tool in range(4) %}
     RESPOND TYPE=command MSG='Tool {tool}: {chameleon[tool+2]}'
   {% endfor %}
-  RESPOND TYPE=command MSG='Tool loaded to extruder: {chameleon[6]}'
+
+[gcode_macro _CHAMELEON_E_UNLOAD]
+description: Unloads the filament from extruder to Y-splitter
+gcode:
+  {% set svv = printer.save_variables.variables %}
+  {% set chameleon = svv.chameleon %}
+  {% set TOOL = chameleon[0] %}
+  {% set YSPLIT_DIST = printer["gcode_macro CHAMELEON_HOME"].ysplit_extruder %}
+  {% set SPEED = printer["gcode_macro CHAMELEON_HOME"].chameleon_speed %}
+  {% set ACC = printer["gcode_macro CHAMELEON_HOME"].chameleon_acc %}
+  
+  MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+
+  {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
+    CHAMELEON_HOME
+    _TOOL_SELECT TOOL={chameleon[1]}
+  {% elif TOOL == 0 or TOOL == 1 %}
+    MANUAL_STEPPER STEPPER=chameleon MOVE=-{YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
+    MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+  {% else %}
+    MANUAL_STEPPER STEPPER=chameleon MOVE={YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
+    MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+  {% endif %}
+  M118 Unload tool {TOOL} from extruder by {YSPLIT_DIST}mm
+
+[gcode_macro _CHAMELEON_E_LOAD]
+description: Loads the filament to extruder from Y-splitter
+gcode:
+  {% set svv = printer.save_variables.variables %}
+  {% set chameleon = svv.chameleon %}
+  {% set TOOL = chameleon[0] %}
+  {% set YSPLIT_DIST = printer["gcode_macro CHAMELEON_HOME"].ysplit_extruder %}
+  {% set SPEED = printer["gcode_macro CHAMELEON_HOME"].chameleon_speed %}
+  {% set ACC = printer["gcode_macro CHAMELEON_HOME"].chameleon_acc %}
+  
+  MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+
+  {% if printer["gcode_macro CHAMELEON_HOME"].chameleon_is_homed != 1 or printer.stepper_enable.steppers['manual_stepper selector'] != True %}
+    CHAMELEON_HOME
+    _TOOL_SELECT TOOL={chameleon[1]}
+  {% elif chameleon[TOOL + 2] == 'soft' %}
+    {% if TOOL == 0 or TOOL == 1 %}
+      MANUAL_STEPPER STEPPER=chameleon MOVE={YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
+      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+    {% else %}
+      MANUAL_STEPPER STEPPER=chameleon MOVE=-{YSPLIT_DIST} SPEED={SPEED} ACCEL={ACC}
+      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+    {% endif %}
+  {% else %}  
+    {% if TOOL == 0 or TOOL == 1 %}
+      MANUAL_STEPPER STEPPER=chameleon MOVE={YSPLIT_DIST + 10} SPEED={SPEED} ACCEL={ACC} STOP_ON_ENDSTOP=1 #to use with solid filaments
+      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+    {% else %}
+      MANUAL_STEPPER STEPPER=chameleon MOVE=-{YSPLIT_DIST + 10} SPEED={SPEED} ACCEL={ACC} STOP_ON_ENDSTOP=1 #to use with solid filaments
+      MANUAL_STEPPER STEPPER=chameleon SET_POSITION=0
+    {% endif %}
+  {% endif %}
+  M118 Load tool {TOOL} from Y-splitter to extruder by {YSPLIT_DIST}mm
+
 
 [gcode_macro EXTRUDER_LOAD]
 description: Loads the filament to the extruder after a tool change
@@ -237,26 +264,13 @@ gcode:
   G1 E{EXT_AMNT} F{SPEED}
   G92 E0
   
-  {% set svv = printer.save_variables.variables %}
-  {% set chameleon = svv.chameleon %}
-  {% set chameleon = chameleon[:6] + [chameleon[0]] %}
-  SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
-  
-  CHAMELEON_CHK_ACTIVE_TOOL
-  
 [gcode_macro EXTRUDER_UNLOAD]
 description: Unloads the filament from the extruder before a tool change
 gcode:
   {% set svv = printer.save_variables.variables %}
   {% set chameleon = svv.chameleon %}
   {% set CURRENT_TOOL = chameleon[0] %}
-  
-  {% if CURRENT_TOOL == -1 %}
-    {% set PREVIOUS_TOOL = chameleon[1] %}
-    {% set FILAMENT_TYPE = chameleon[PREVIOUS_TOOL + 2] %}
-  {% else %}
-    {% set FILAMENT_TYPE = chameleon[CURRENT_TOOL + 2] %}
-  {% endif %}
+  {% set FILAMENT_TYPE = chameleon[CURRENT_TOOL + 2] %}
   
   {% if FILAMENT_TYPE == "hard" %}
     {% set moves = params.MOVES | default(5) | int %}
@@ -303,124 +317,3 @@ gcode:
     M107
     M104 S{temp}
   {% endif %}
-  
-  {% set chameleon = chameleon[:6] + [-1] %}
-  SAVE_VARIABLE VARIABLE=chameleon VALUE="{chameleon}"
-  
-  CHAMELEON_CHK_ACTIVE_TOOL
-
-[gcode_macro T0]
-description: Changes the filament to that loaded in tool 0
-gcode:
-  {% set svv = printer.save_variables.variables %}
-  {% set chameleon = svv.chameleon %}
-  {% set CURRENT_TOOL = chameleon[0] %}
-  {% set LOADED_TOOL = chameleon[6] %}
-  
-  # Pause the print
-  PAUSE
-  
-  {% if LOADED_TOOL != -1 and LOADED_TOOL != 0 %}
-    EXTRUDER_UNLOAD
-    _CHAMELEON_E_UNLOAD
-  {% endif %}
-
-  {% if CURRENT_TOOL != 0 %}
-    _TOOL_SELECT TOOL=0
-  {% endif %}
-
-  {% if LOADED_TOOL != 0 %}
-    _CHAMELEON_E_LOAD
-    EXTRUDER_LOAD
-  {% endif %}
-
-  WIPE
-  RESUME
-  CHAMELEON_CHK_ACTIVE_TOOL
-
-[gcode_macro T1]
-description: Changes the filament to that loaded in tool 1
-gcode:
-  {% set svv = printer.save_variables.variables %}
-  {% set chameleon = svv.chameleon %}
-  {% set CURRENT_TOOL = chameleon[0] %}
-  {% set LOADED_TOOL = chameleon[6] %}
-  
-  # Pause the print
-  PAUSE
-  
-  {% if LOADED_TOOL != -1 and LOADED_TOOL != 1 %}
-    EXTRUDER_UNLOAD
-    _CHAMELEON_E_UNLOAD
-  {% endif %}
-
-  {% if CURRENT_TOOL != 1 %}
-    _TOOL_SELECT TOOL=1
-  {% endif %}
-
-  {% if LOADED_TOOL != 1 %}
-    _CHAMELEON_E_LOAD
-    EXTRUDER_LOAD
-  {% endif %}
-
-  WIPE
-  RESUME
-  CHAMELEON_CHK_ACTIVE_TOOL
-
-[gcode_macro T2]
-description: Changes the filament to that loaded in tool 2
-gcode:
-  {% set svv = printer.save_variables.variables %}
-  {% set chameleon = svv.chameleon %}
-  {% set CURRENT_TOOL = chameleon[0] %}
-  {% set LOADED_TOOL = chameleon[6] %}
-  
-  # Pause the print
-  PAUSE
-  
-  {% if LOADED_TOOL != -1 and LOADED_TOOL != 2 %}
-    EXTRUDER_UNLOAD
-    _CHAMELEON_E_UNLOAD
-  {% endif %}
-
-  {% if CURRENT_TOOL != 2 %}
-    _TOOL_SELECT TOOL=2
-  {% endif %}
-
-  {% if LOADED_TOOL != 2 %}
-    _CHAMELEON_E_LOAD
-    EXTRUDER_LOAD
-  {% endif %}
-
-  WIPE
-  RESUME
-  CHAMELEON_CHK_ACTIVE_TOOL
-
-[gcode_macro T3]
-description: Changes the filament to that loaded in tool 3
-gcode:
-  {% set svv = printer.save_variables.variables %}
-  {% set chameleon = svv.chameleon %}
-  {% set CURRENT_TOOL = chameleon[0] %}
-  {% set LOADED_TOOL = chameleon[6] %}
-  
-  # Pause the print
-  PAUSE
-  
-  {% if LOADED_TOOL != -1 and LOADED_TOOL != 3 %}
-    EXTRUDER_UNLOAD
-    _CHAMELEON_E_UNLOAD
-  {% endif %}
-
-  {% if CURRENT_TOOL != 3 %}
-    _TOOL_SELECT TOOL=3
-  {% endif %}
-
-  {% if LOADED_TOOL != 3 %}
-    _CHAMELEON_E_LOAD
-    EXTRUDER_LOAD
-  {% endif %}
-
-  WIPE
-  RESUME
-  CHAMELEON_CHK_ACTIVE_TOOL
