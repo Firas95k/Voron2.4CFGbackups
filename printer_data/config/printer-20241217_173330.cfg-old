@@ -1,4 +1,3 @@
-[include mmu/optional/client_macros.cfg]
 [include mmu/base/*.cfg]
 ## Thermistor types                     [extruder] and [heater_bed] sections - See https://www.klipper3d.org/Config_Reference.html#common-thermistors for common thermistor types
 ## Z Endstop Switch location            [safe_z_home] section
